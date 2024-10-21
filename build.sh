@@ -28,7 +28,7 @@ getSpecValue () {
 usage() {
     local errno=0; [ $# -ge 1 ] && errno=$1 && shift
 
-    echo 2>&1 "$PROG: [-b:--build={prep,compile,binaries,source}] [armbian|collabora|fedora|mixed]"
+    echo 2>&1 "$PROG: [-b:--build={prep,compile,binaries,installsource}] [armbian|collabora|fedora|mixed]"
 
     exit "$errno"
 }
@@ -52,6 +52,9 @@ while true; do
             ;;
         binar*)
             RPMBUILD_ARGS="-bb"
+            ;;
+        install)
+            RPMBUILD_ARGS="-bi"
             ;;
         source)
             RPMBUILD_ARGS="-bs"
@@ -105,7 +108,7 @@ SPECFILE=SPECS/kernel.${KERNEL}.spec
 TARGET=${TARGET:-aarch64-linux-gnu}
 
 ARCH="arm64"
-BUILDVER=$(cat .cache/buildver-${CONFIG} 2> /dev/null); BUILDVER=${BUILDVER:-0}
+BUILDVER=$(cat .cache/buildver 2> /dev/null); BUILDVER=${BUILDVER:-0}
 #BUILD_CFLAGS="-O2 -fexceptions -grecord-gcc-switches -pipe -Wall -Werror=format-security -Wp,-U_FORTIFY_SOURCE,-D_FORTIFY_SOURCE=3 -Wp,-D_GLIBCXX_ASSERTIONS -specs=/usr/lib/rpm/redhat/redhat-hardened-cc1 -fstack-protector-strong -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -fasynchronous-unwind-tables -fstack-clash-protection"    # -g -Werror=implicit-function-declaration -Werror=implicit-int -mbranch-protection=standard
 #BUILD_LDFLAGS="-Wl,-z,relro -Wl,--as-needed -Wl,-z,now -specs=/usr/lib/rpm/redhat/redhat-hardened-ld -specs=/usr/lib/rpm/redhat/redhat-annobin-cc1 -Wl,--build-id=sha1 -specs=/usr/lib/rpm/redhat/redhat-package-notes"
 CROSS_COMPILE="${TARGET}-"
@@ -130,6 +133,7 @@ cp "${TOPDIR}"/SOURCES/kernel-aarch64-fedora.${CONFIG}.config ${TOPDIR}/SOURCES/
 cp "${TOPDIR}"/SOURCES/patch-6.${PATCHVERSION}-redhat.${PATCH}.patch  "${TOPDIR}"/SOURCES/patch-6.${PATCHVERSION}-redhat.patch
 
 # Use .cache value to increment
+[ -d .cache ] || mkdir .cache
 if [ "${KERNEL}" = "armbian" ]; then
     sed -i "s/^\(%define buildid \).*$/\1.${BUILDVER}.armbian/" ${SPECFILE}
 elif [ "${KERNEL}" = "collabora" ]; then
@@ -137,26 +141,26 @@ elif [ "${KERNEL}" = "collabora" ]; then
 fi
 
 # Armbian patches fail on GCC14
-[ "$(gcc -dumpversion)" -ge 14 ] && sed -i 's/^CONFIG_DRM_WERROR=.*$/# CONFIG_DRM_WERROR is not set/' "${TOPDIR}"/SOURCES/kernel-aarch64-fedora.config
+#[ "$(gcc -dumpversion)" -ge 14 ] && sed -i 's/^CONFIG_DRM_WERROR=.*$/# CONFIG_DRM_WERROR is not set/' "${TOPDIR}"/SOURCES/kernel-aarch64-fedora.config
 
 #    --with vanilla \
 #    --without configchecks \
 #    --define="build_cflags ${BUILD_CFLAGS}" \
 #    --define="build_ldflags ${BUILD_LDFLAGS}" \
 #    --define="make_opts ${MAKE_OPTS}" \
+#    --without debuginfo \
 (rpmbuild -v ${RPMBUILD_ARGS} \
     --with baseonly \
     --without configchecks \
     --with cross \
     --with verbose \
-    --without debuginfo \
     --target=${TARGET} \
     --define="cross_opts ARCH=${ARCH} CROSS_COMPILE=${CROSS_COMPILE}" \
     ${SPECFILE}
 
 if [ $? -eq 0 ]; then
     BUILDVER=$(expr ${BUILDVER} + 1)
-    echo ${BUILDVER} > .cache/buildver-${CONFIG}
+    echo ${BUILDVER} > .cache/buildver
 fi
 ) 2>out/rpmbuild.err | tee out/rpmbuild.out
 

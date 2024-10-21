@@ -4,7 +4,7 @@ DBG=${DBG:-0} && [ "0$DBG" -eq 0 ]; [ "$DBG" -eq 1 ] && set -x
 
 PATH=/bin:/usr/bin:$PATH
 export PATH
-	
+
 PROG=$(realpath "$0" | sed 's|^.*\/||')
 TOPDIR=$(pwd)
 
@@ -20,7 +20,7 @@ function ensureKernelSRPM () {
 		srpm=$(wget -O - -q "${repo}" | awk '
 			/href="kernel-[[:digit:]]*\.[[:digit:]]*\..*\.src\.rpm"/ {
 				print gensub(/^(.*")(kernel-[[:digit:]]*\.[[:digit:]]*\..*\.src\.rpm)(".*)$/, "\\2", 1)
-			}') 
+			}')
 
 		[ "${srpm}" = "${FEDORA_SRPM}" ] && wget "${repo}/${FEDORA_SRPM}"
 
@@ -43,83 +43,44 @@ function ensureKernelSRPM () {
 	fi
 }
 
-function getSpecValue () {
-	local name=$(echo "$1" | tr -d '%{}')
-
-	echo "%{${name}}" | rpmspec --shell ${SPECFILE} 2>/dev/null | awk -v name="${name}" '
-	BEGIN {
-		search = sprintf("> %%{%s}", name)
-	}
-	$0 ~ search {
-		if (getline > 0) {
-			if ($0 ~ name) {
-				print ""
-			} else {
-				print
-			}
-		}
-	}'
-}
-
 function forceConfigSetting () {
-	awk '
+	[ $# -eq 1 ] && local build=$1 || exit 1
+
+	awk -f "${TOPDIR}/force_buildreq.awk" -f "${TOPDIR}/force_${build}.awk" -e '
 	BEGIN {
 		key = ""
-		lineno = 0
 
 		delete config
-		delete line
-
-		# Required for RPM to build
-		force["CONFIG_DEBUG_INFO_BTF"] = "y"
-		force["CONFIG_DEBUG_INFO_DWARF_TOOLCHAIN_DEFAULT"] = "y"
-		force["CONFIG_DEBUG_INFO_NONE"] = "NULL"
-		force["CONFIG_DEBUG_INFO_REDUCED"] = "NULL"
-		force["CONFIG_EFI_ZBOOT"] = "y"
-		force["CONFIG_SECURITY_LOCKDOWN_LSM"] = "y"
-		force["CONFIG_LSM"] = "\"lockdown,yama,integrity,selinux,bpf,landlock\""
-		force["CONFIG_MODULE_SIG"] = "y"
-		force["CONFIG_MODULE_SIG_KEY"] = "\"certs/signing_key.pem\""
-
-		# Required for Fedora boot
-		force["CONFIG_ZRAM"] = "m"
-		force["CONFIG_ZRAM_DEF_COMP"] = "\"lzo-rle\""
-		force["CONFIG_ZRAM_DEF_COMP_LZORLE"] = "y"
-		force["CONFIG_ZRAM_MULTI_COMP"] = "y"
-		force["CONFIG_XFS_DRAIN_INTENTS"] = "y"
-		force["CONFIG_XFS_FS"] = "m"
-		force["CONFIG_XFS_LIVE_HOOKS"] = "y"
-		force["CONFIG_XFS_MEMORY_BUFS"] = "y"
-		force["CONFIG_XFS_ONLINE_SCRUB"] = "y"
-		force["CONFIG_XFS_POSIX_ACL"] = "y"
-		force["CONFIG_XFS_QUOTA"] = "y"
-		force["CONFIG_XFS_RT"] = "y"
-		force["CONFIG_XFS_SUPPORT_ASCII_CI"] = "y"
-		force["CONFIG_XFS_SUPPORT_V4"] = "y"
-
-
-		# Enable MMC in Armbian default config
 	}
 
 	{
-		line[++lineno] = $0
-
 		switch ($0) {
 		case /^# CONFIG_/:
 			config[$2] = "NULL"
 			break
 		case /^CONFIG_/:
-			split($0, a, /=/)
-			config[a[1]] = a[2]
-			break
+			switch (split($0, a, /=/)) {
+			case 0:
+				printf("error: malformed %s\n", $0) > "/dev/stderr"
+				break
+			case 2:
+				config[a[1]] = a[2]
+				break
+			default:
+				config[a[1]] = substr($0, match($0, "=") + 1)
+			}
 		}
 	}
 
 	END {
 		for (key in force) {
-			config[key] = force[key]
 			if (ENVIRON["DBG"] > 0)
-				printf("forced %s=%s\n", key, config[key]) > "/dev/stderr"
+				printf("forced %s=<%s> [%s]\n", key, force[key], config[key]) > "/dev/stderr"
+
+			if (length(force[key]) > 0)
+				config[key] = force[key]
+			else
+				delete config[key]
 		}
 
 		printf("# arm64\n")
@@ -133,6 +94,8 @@ function forceConfigSetting () {
 
 		exit(0)
 	}'
+
+	return
 }
 
 function resetGitTree () {
@@ -149,43 +112,113 @@ function remakeRedhatPatch () {
 	[ $# -eq 1 ] && local buildid=$1 || exit 1
 
 	patch -p1 < "${ODIR}"/patch-${patchversion}-redhat.patch
-	
+
 	git add --intent-to-add $(git status --untracked-files=yes --porcelain | awk '/^\?\?/ {print $2}')
 	git diff --stat --patch --output "${ODIR}"/patch-${patchversion}-redhat${buildid}.patch
 }
 
 function archiveGitTree () {
-	[ $# -gt 1 ] && local patchversion=$1; shift
-	[ $# -eq 1 ] && local commitid=$1 || exit 1
+	[ $# -ge 2 ] || exit 1
+	local patchversion=$1; shift
+	local commitid=$1; shift
+	local baseid=""; [ $# -eq 1 ] && baseid=$1; shift
+	[ $# -eq 0 ] || exit 1
 
-	if [ -s "${TOPDIR}"/.cache/linux-"${patchversion}.${commitid}".tar.xz ]; then
-		cp "${TOPDIR}"/.cache/linux-"${patchversion}.${commitid}".tar.xz "${ODIR}"
+	[ -d "${TOPDIR}"/.cache ] || mkdir "${TOPDIR}"/.cache
+
+	baseid=${baseid:-"${commitid}"}
+	if [ -s "${TOPDIR}"/.cache/linux-"${patchversion}.${baseid}".tar.xz ]; then
+		cp "${TOPDIR}"/.cache/linux-"${patchversion}.${baseid}".tar.xz "${ODIR}"
+	elif [ -s "${TOPDIR}"/.cache/linux-"${patchversion}.${baseid}".tar.xz ]; then
+		cp "${TOPDIR}"/.cache/linux-"${patchversion}.${baseid}".tar.xz "${ODIR}"
 	else
-		git archive --prefix=linux-"${patchversion}.${commitid}"/ "${commitid}" | xz -zc - >"${ODIR}"/linux-"${patchversion}.${commitid}".tar.xz
+		git archive --prefix=linux-"${patchversion}.${baseid}"/ "${commitid}" | xz -zc - >"${ODIR}"/linux-"${patchversion}.${baseid}".tar.xz
 
-		cp "${ODIR}"/linux-"${patchversion}.${commitid}".tar.xz "${TOPDIR}"/.cache/
+		cp "${ODIR}"/linux-"${patchversion}.${baseid}".tar.xz "${TOPDIR}"/.cache/
 	fi
+}
+
+function addPatches () {
+	[ $# -eq 4 ] || exit 1
+	local specfile=$1; shift
+	local patchdir=$1; shift
+	local kver=$1; shift
+	local odir=$1
+
+	local i=0
+	local j=0
+	local last=0
+	local next=0
+	local patch=""
+	local patches=$(find "${patchdir}" -name \*.patch | sort)
+	local range=$(wc -l <<< "${patches}")
+
+	[ -z "${patches}" ] && return
+
+	spectool --patches "${specfile}" | sed 's/^Patch\([0-9]*\):.*$/\1/' | sort -nr | while read -r i; do
+		case "${i}" in
+		999999) # RedHat reserves Patch999999 for testing and it has to be the last patch
+			j=${i}
+			continue
+			;;
+		[1-9]*) # patches start at 1
+			if [ $(expr ${i} + ${range}) -ge ${j} ]; then
+				j=${i}
+				continue
+			fi
+			;;
+		*)
+			# got to the end of list without room to add all the patches
+			return 1
+			;;
+		esac
+
+		last=${i}
+		while read -r patch; do
+			grep -q $(basename ${patch}) <<< "${PATCH_BLACKLIST}" && continue
+
+			cp "${patch}" "${odir}/patch-${kver}-$(basename ${patch})"
+
+			next=$(expr ${last} + 1)
+			sed -i "/^Patch${last}:/a Patch${next}: patch-${kver}-$(basename ${patch})" "${specfile}"
+
+			# put all the patches ahead of Redhat's kernel version patch
+			sed -i "/^ApplyOptionalPatch patch-%{patchversion}-redhat.patch/i ApplyOptionalPatch patch-${kver}-$(basename ${patch})" "${specfile}"
+
+			last=${next}
+		done <<< "${patches}"
+
+		return
+	done
+}
+
+function addSource () {
+	[ $# -eq 2 ] || exit 1
+	local specfile=$1; shift
+	local source=$1
+
+	local last=$(spectool --sources "${specfile}" | sed 's/^Source\([0-9]*\):.*$/\1/' | sort -n | tail -1)
+	local next=$(expr ${last} + 1)
+	sed -i "/^Source${last}:/a Source${next}: ${source}" "${specfile}"
+
+	echo "${next}"
 }
 
 function usage () {
 	local errno=0; [ $# -ge 1 ] && errno=$1 && shift
 
-	echo 2>&1 "$PROG: [-h|--help][-d|--dryrun][-e|--extraversion=\"text\"][-m|--mainline][-r|--rawhide]"
+	echo 2>&1 "$PROG: [-h|--help][-a|--armbian][-c|--collabora][--rebase]"
 
 	exit "$errno"
 }
 
-OPTARGS=$(getopt --options hde:mr --longoptions help,dryrun,extraversion:,mainline,rawhide --name "$PROG" -- ${1+"$@"}) || usage $?
+OPTARGS=$(getopt --options hacr --longoptions help,armbian,collabora,rebase --name "$PROG" -- ${1+"$@"}) || usage $?
 eval "set -- $OPTARGS"
 
 while true; do
 	case "$1" in
 	-h|--help)
 		usage 0
-		;;
-	-d|--dryrun)
-		DRYRUN="echo"
-		shift
 		;;
 	-a|--armbian)
 		ARMBIAN=0
@@ -195,16 +228,8 @@ while true; do
 		COLLABORA=0
 		shift
 		;;
-	-e|--extraversion)
-		EXTRAVERSION="$2"
-		shift 2
-		;;
-	-m|--mainline)
-		MAINLINE=0
-		shift
-		;;
-	-r|--rawhide)
-		RAWHIDE=0
+	-r|--rebase)
+		REBASE=0
 		shift
 		;;
 	--)
@@ -219,29 +244,25 @@ done
 ARCH="arm64"
 ARMBIAN=${ARMBIAN:-1}
 ARMBIAN_BUILDDIR="${TOPDIR}/../armbian/armbian-build"
+ARMBIAN_PATCHDIR="${TOPDIR}/patches/armbian"
 COLLABORA=${COLLABORA:-1}
+COLLABORA_PATCHDIR="${TOPDIR}/patches/collabora"
 COLLABORA_SRCDIR="${TOPDIR}/../collabora/linux"
-DRYRUN=${DRYRUN:-""}
-EXTRAVERSION=${EXTRAVERSION:-""}
-#FEDORA_SRPM="kernel-6.10.0-64.fc41.src.rpm"
-FEDORA_SRPM="kernel-6.11.0-0.rc6.20240905gitc763c4339688.52.fc42.src.rpm"
-FEDORA_ARMBIAN_SRPM="kernel-6.11.0-0.armbian.fc40.src.rpm"
-FEDORA_COLLABORA_SRPM="kernel-6.11.0-0.collabora.fc40.src.rpm"
-GID=$(getent passwd ${LOGNAME} | cut -d: -f4)
-MAINLINE=${MAINLINE:-1}
-PKGRELEASE="${SUBLEVEL:=0}"
-#PODMAN_UMASK="0002"
-#PODMAN_USERNS="keep-id:uid=1000,gid=127"
-PODMAN_USERNS="keep-id:uid=0,gid=0"
-RAWHIDE=${RAWHIDE:--1}
-SPECFILE="${TOPDIR}"/SPECS/kernel.spec
-#export ARCH PODMAN_USERNS PODMAN_UMASK
-export ARCH PODMAN_USERNS
+FEDORA_SRPM="kernel-6.11.4-300.fc41.src.rpm"
+PATCH_BLACKLIST=""
+PATCHES="${TOPDIR}/patches"
+REBASE=${REBASE:-1}
+SOURCE=""
+SPECFILE=""
+SPEC_SRCNUMBER=""
+TMPDIR=${TMPDIR:-"${XDG_RUNTIME_DIR}"}
+export ARCH
 
-if [ -n "${EXTRAVERSION}" ]; then
-	PKGRELEASE="${SUBLEVEL}.${EXTRAVERSION}"
+if [ ${ARMBIAN} -eq 0 -a ${COLLABORA} -eq 0 ]; then
+	exit 1
+elif [ ${ARMBIAN} -eq 1 -a ${COLLABORA} -eq 1 ]; then
+	exit 1
 fi
-SPECRELEASE="${PKGRELEASE}%{?buildid}%{?dist}"
 
 ODIR=$(mktemp -d)
 trap "[ ${DBG} -eq 0 ] && rm -rf \"${ODIR}\"" EXIT INT
@@ -259,60 +280,95 @@ cat "${TOPDIR}"/SRPMS/${FEDORA_SRPM} | rpm2archive - | tar xzf -
 # ARMBIAN
 #
 if [ ${ARMBIAN} -eq 0 ]; then
-	_SPECFILE=kernel.armbian.spec
-	[ -f ./kernel.spec ] && cp kernel.spec ${_SPECFILE} || exit 1
+	SPECFILE=kernel.armbian.spec
+	[ -f ./kernel.spec ] && cp kernel.spec ${SPECFILE} || exit 1
+
+	PATCH_BLACKLIST=$(cat -<< %E%O%T%
+%E%O%T%
+	)
 
 	pushd "${ARMBIAN_BUILDDIR}" &> /dev/null || exit 1
 	#
 	# >>
-	ARMBIAN_SRCDIR=$(./compile.sh config-dump BOARD=orangepi5 BRANCH=edge 2>/dev/null | jq -r '.LINUXSOURCEDIR')
-	[ -d ./cache/sources/"${ARMBIAN_SRCDIR}" ] && rm -rf ./cache/sources/"${ARMBIAN_SRCDIR}"
-	#mkdir -p ./cache/sources/"${ARMBIAN_SRCDIR}"
+	ARMBIAN_CONFIG=$(./compile.sh config-dump BOARD=orangepi5 BRANCH=edge 2>/dev/null)
+	ARMBIAN_SRCDIR=$(jq -r '.LINUXSOURCEDIR' <<<"${ARMBIAN_CONFIG}")
+	BASEID=$(git log main --pretty=format:"%H" --max-count=1)
+	KERNEL_MAJOR_MINOR=$(jq -r '.WANT_ARTIFACT_KERNEL_INPUTS_ARRAY[] | match("KERNEL_MAJOR_MINOR=(.*).") | .captures[].string' <<<"${ARMBIAN_CONFIG}")
 
-	${DRYRUN} ./compile.sh rewrite-kernel-patches BOARD=orangepi5 BRANCH=edge PREFER_DOCKER=yes WORKDIR_BASE_TMP=${XDG_RUNTIME_DIR}/tmp DOCKER_SERVER_REQUIRES_LOOP_HACKS=no KERNEL_GIT=full
+	KERNELPATCHDIR=$(jq -r '.WANT_ARTIFACT_KERNEL_INPUTS_ARRAY[] | match("KERNELPATCHDIR=(.*).") | "patch/kernel/" + .captures[].string' <<<"${ARMBIAN_CONFIG}")
+
+	[ -d ./cache/sources/"${ARMBIAN_SRCDIR}" ] && rm -rf ./cache/sources/"${ARMBIAN_SRCDIR}"
+
+	./compile.sh rewrite-kernel-patches BOARD=orangepi5 BRANCH=edge PREFER_DOCKER=yes WORKDIR_BASE_TMP=${XDG_RUNTIME_DIR}/armbian DOCKER_SERVER_REQUIRES_LOOP_HACKS=no KERNEL_GIT=shallow SKIP_LOG_ARCHIVE=yes
 
 	[ $? -eq 0 ] || exit 1
 
-	pushd ./cache/sources/"${ARMBIAN_SRCDIR}" &> /dev/null || exit 1
-	#
-	# >>>
-	# wind back to the base
-	COMMITID=$(git log --author=auto.patch@armbian.com --pretty=format:"%P" --max-count=1) # parent of
-	PATCHVERSION=$(make kernelversion | awk '{split($0, a, /\./); printf("%d.%d\n", a[1], a[2])}')
+	addPatches "${ODIR}/${SPECFILE}" "${KERNELPATCHDIR}" "${KERNEL_MAJOR_MINOR}" "${ODIR}"
 
-	${DRYRUN} archiveGitTree "${PATCHVERSION}" "${COMMITID}"
-	${DRYRUN} git diff "${COMMITID}" HEAD --stat --patch --output "${ODIR}"/pre.patch
-	${DRYRUN} remakeRedhatPatch "${PATCHVERSION}" ".post"
+	if [ -d "${KERNELPATCHDIR}"/dt ]; then
+		mkdir -p "${ODIR}"/arch/arm64/boot/dts/rockchip || exit 1
+		cp "${KERNELPATCHDIR}"/dt/* "${ODIR}"/arch/arm64/boot/dts/rockchip/
+	fi
 
-	${DRYRUN} resetGitTree "${COMMITID}"
-	#
-	# <<<
-	popd &> /dev/null || exit 1
+	if [ -d "${KERNELPATCHDIR}"/overlay ]; then
+		mkdir -p "${ODIR}"/arch/arm64/boot/dts/rockchip/overlay || exit 1
+		cp "${KERNELPATCHDIR}"/overlay/* "${ODIR}"/arch/arm64/boot/dts/rockchip/overlay/
 
-	${DRYRUN} ./compile.sh rewrite-kernel-config BOARD=orangepi5 BRANCH=edge PREFER_DOCKER=yes WORKDIR_BASE_TMP=${XDG_RUNTIME_DIR}/tmp DOCKER_SERVER_REQUIRES_LOOP_HACKS=no KERNEL_GIT=full
 
-	${DRYRUN} forceConfigSetting < ./cache/sources/"${ARMBIAN_SRCDIR}"/.config > "${ODIR}"/kernel-aarch64-fedora.armbian.config
+	fi
+
+	addPatches "${ODIR}/${SPECFILE}" "${ARMBIAN_PATCHDIR}" "${KERNEL_MAJOR_MINOR}" "${ODIR}"
+
+	if [ ${REBASE} -eq 0 ]; then
+		pushd ./cache/sources/"${ARMBIAN_SRCDIR}" &> /dev/null || exit 1
+		#
+		# >>>
+		# Skip the summary patch
+		COMMITID=$(git log --pretty=format:"%H" --max-count=2 | head -1)
+		PATCHVERSION=$(make kernelversion | awk '{split($0, a, /\./); printf("%d.%d\n", a[1], a[2])}')
+
+		# The Armbian kernel source tree (patched)
+		archiveGitTree "${PATCHVERSION}" "${COMMITID}" "${BASEID}"
+		remakeRedhatPatch "${PATCHVERSION}" ".armbian"
+
+		# want the following kernel config to be based on just the Armbian sources
+		resetGitTree "${COMMITID}"
+		#
+		# <<<
+		popd &> /dev/null || exit 1
+	fi
+
+	#  
+	./compile.sh rewrite-kernel-config BOARD=orangepi5 BRANCH=edge PREFER_DOCKER=yes WORKDIR_BASE_TMP=${XDG_RUNTIME_DIR}/armbian DOCKER_SERVER_REQUIRES_LOOP_HACKS=no KERNEL_GIT=shallow SKIP_LOG_ARCHIVE=yes
+
+	forceConfigSetting "ARMBIAN" < ./cache/sources/"${ARMBIAN_SRCDIR}"/.config > "${ODIR}"/kernel-aarch64-fedora.armbian.config
 	#
 	# <<
 	popd &> /dev/null || exit 1
 
-	# merge the patches
-	${DRYRUN} cat pre.patch patch-${PATCHVERSION}-redhat.post.patch >patch-${PATCHVERSION}-redhat.armbian.patch
-	rm pre.patch patch-${PATCHVERSION}-redhat.post.patch
+	if [ -d  ./arch ]; then
+		tar -cf armbian-dtree-files.tar ./arch
+		rm -rf ./arch
 
-	${DRYRUN} sed -i "s/^.*\(define buildid \).*\$/%\1.armbian/" ${_SPECFILE}
-	${DRYRUN} sed -i "s/^\(%define pkgrelease \).*\$/\1${PKGRELEASE}/" ${_SPECFILE}
-	${DRYRUN} sed -i "s/^\(%define tarfile_release \).*\$/\1${PATCHVERSION}.${COMMITID}/" ${_SPECFILE}
-	${DRYRUN} sed -i "s/^\(%define specrelease \).*\$/\1${SPECRELEASE}/" ${_SPECFILE}
-	${DRYRUN} sed -i 's/^\(BuildRequires: openssl-devel openssl-devel-engine\)/%if 0%{fedora} > 40\n\1\n%else\nBuildRequires: openssl-devel\n%endif\n/' ${_SPECFILE}
+		SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dtree-files.tar)
 
+		# Unpack the device tree files after the last patch and add Makefile glue
+		sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a tar xvf %{SOURCE${SPEC_SRCNUMBER}}" "${SPECFILE}"
+		sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a echo \"subdir-y := \$(dts-dirs) overlay\" >> arch/arm64/boot/dts/rockchip/Makefile" "${SPECFILE}"
+
+	fi
+
+	sed -i "s/^.*\(define buildid \).*\$/%\1.armbian/" ${SPECFILE}
+	[ ${REBASE} -eq 0 ] && sed -i "s/^\(%define tarfile_release \).*\$/\1${PATCHVERSION}.${BASEID}/" ${SPECFILE}
 fi
 
 # COLLABORA
 #
 if [ ${COLLABORA} -eq 0 ]; then
-	_SPECFILE=kernel.collabora.spec
-	cp kernel.spec ${_SPECFILE}
+	SPECFILE=kernel.collabora.spec
+	cp kernel.spec ${SPECFILE}
+
+	KERNEL_MAJOR_MINOR=$(awk '/%define patchversion / { print $3 + 1 }' kernel.spec)
 
 	pushd "${COLLABORA_SRCDIR}" &> /dev/null || exit 1
 	# >>
@@ -325,56 +381,23 @@ if [ ${COLLABORA} -eq 0 ]; then
 	remakeRedhatPatch "${PATCHVERSION}" ".collabora"
 	resetGitTree "${COMMITID}"
 	make defconfig
-	forceConfigSetting < .config > "${ODIR}"/kernel-aarch64-fedora.collabora.config
+	forceConfigSetting "COLLABORA" < .config > "${ODIR}"/kernel-aarch64-fedora.collabora.config
 	#
 	# <<
 	popd &> /dev/null || exit 1
 
-	sed -i "s/^.*\(define buildid \).*\$/%\1.collabora/" ${_SPECFILE}
-	sed -i "s/^\(%define pkgrelease \).*\$/\1${PKGRELEASE}/" ${_SPECFILE}
-	sed -i "s/^\(%define tarfile_release \).*\$/\1${PATCHVERSION}.${COMMITID}/" ${_SPECFILE}
-	sed -i "s/^\(%define specrelease \).*\$/\1${SPECRELEASE}/" ${_SPECFILE}
-	sed -i 's/^\(BuildRequires: openssl-devel openssl-devel-engine\)/%if 0%{fedora} > 40\n\1\n%else\nBuildRequires: openssl-devel\n%endif\n/' ${_SPECFILE}
+	addPatches "${ODIR}/${SPECFILE}" "${COLLABORA_PATCHDIR}" "${KERNEL_MAJOR_MINOR}" "${ODIR}"
 
+	sed -i "s/^.*\(define buildid \).*\$/%\1.collabora/" ${SPECFILE}
+	sed -i "s/^\(%define tarfile_release \).*\$/\1${PATCHVERSION}.${COMMITID}/" ${SPECFILE}
 fi
 
-if [ ${RAWHIDE} -eq 0 ]; then
-	_SPECFILE=kernel.rawhide.spec
-	cp kernel.spec ${_SPECFILE}
+PKGRELEASE=$(awk '/%define pkgrelease / { print $3 + 1 }' kernel.spec)
+SPECRELEASE="${PKGRELEASE}%{?buildid}%{?dist}"
 
-	REPO="https://dl.fedoraproject.org/pub/fedora/linux/development/rawhide/Everything/source/tree/Packages/k/"
-	SRPM=$(wget -O - -q ${REPO} | awk '
-		/href="kernel-[[:digit:]]*\.[[:digit:]]*\..*\.src\.rpm"/ {
-			print gensub(/^(.*")(kernel-[[:digit:]]*\.[[:digit:]]*\..*\.src\.rpm)(".*)$/, "\\2", 1)
-		}') 
-
-	if [ "${SRPM}" = "${FEDORA_SRPM}" ]; then
-		cat "${TOPDIR}"/SRPMS/${FEDORA_SRPM} | rpm2archive - | tar xzf -
-	else
-		echo -e "\bRawhide has newer version of kernel RPM"
-		wget -O - ${REPO}/${SRPM} | rpm2archive - | tar xzf -
-	fi
-
-	tarfile_release=$(SPECFILE=${_SPECFILE} getSpecValue tarfile_release)
-	patchversion=$(SPECFILE=${_SPECFILE} getSpecValue patchversion)
-	if [ ${MAINLINE} -eq 0 ]; then
-		# remove kernel provided in .rpm
-		${DRYRUN} rm linux-${tarfile_release}.tar.xz
-
-		tarfile_release=${patchversion}${EXTRAVERSION:+-${EXTRAVERSION}}
-		if [ -z "${DRYRUN}" ]; then
-			wget -O - https://github.com/torvalds/linux/archive/refs/tags/v${tarfile_release}.tar.gz > linux-${tarfile_release}.tar.gz
-	   else
-			printf "%s > %s\n" "wget -O - https://github.com/torvalds/linux/archive/refs/tags/v${tarfile_release}.tar.gz" "linux-${tarfile_release}.tar.gz"
-	   fi
-	fi
-
-	sed -i "s/^\(%define pkgrelease \).*\$/\1${PKGRELEASE}/" ${_SPECFILE}
-	sed -i "s/^\(%define tarfile_release \).*\$/\1${PATCHVERSION}.${COMMITID}/" ${_SPECFILE}
-	sed -i "s/^\(%define specrelease \).*\$/\1${SPECRELEASE}/" ${_SPECFILE}
-	sed -i 's/^\(BuildRequires: openssl-devel openssl-devel-engine\)/%if 0%{fedora} > 40\n\1\n%else\nBuildRequires: openssl-devel\n%endif\n/' ${_SPECFILE}
-
-fi
+sed -i "s/^\(%define pkgrelease \).*\$/\1${PKGRELEASE}/" ${SPECFILE}
+sed -i "s/^\(%define specrelease \).*\$/\1${SPECRELEASE}/" ${SPECFILE}
+sed -i 's/^\(BuildRequires: openssl-devel openssl-devel-engine\)/%if 0%{fedora} > 40\n\1\n%else\nBuildRequires: openssl-devel\n%endif\n/' ${SPECFILE}
 
 #
 # <

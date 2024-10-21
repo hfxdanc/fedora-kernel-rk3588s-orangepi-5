@@ -65,3 +65,4 @@ SRPMS/
 .cache
 SOURCES/
 SPECS/
+config-*
