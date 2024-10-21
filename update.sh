@@ -245,6 +245,7 @@ ARCH="arm64"
 ARMBIAN=${ARMBIAN:-1}
 ARMBIAN_BUILDDIR="${TOPDIR}/../armbian/armbian-build"
 ARMBIAN_PATCHDIR="${TOPDIR}/patches/armbian"
+BIN=""
 COLLABORA=${COLLABORA:-1}
 COLLABORA_PATCHDIR="${TOPDIR}/patches/collabora"
 COLLABORA_SRCDIR="${TOPDIR}/../collabora/linux"
@@ -252,9 +253,9 @@ FEDORA_SRPM="kernel-6.11.4-300.fc41.src.rpm"
 PATCH_BLACKLIST=""
 PATCHES="${TOPDIR}/patches"
 REBASE=${REBASE:-1}
-SOURCE=""
 SPECFILE=""
 SPEC_SRCNUMBER=""
+SRC=""
 TMPDIR=${TMPDIR:-"${XDG_RUNTIME_DIR}"}
 export ARCH
 
@@ -311,10 +312,12 @@ if [ ${ARMBIAN} -eq 0 ]; then
 	fi
 
 	if [ -d "${KERNELPATCHDIR}"/overlay ]; then
-		mkdir -p "${ODIR}"/arch/arm64/boot/dts/rockchip/overlay || exit 1
-		cp "${KERNELPATCHDIR}"/overlay/* "${ODIR}"/arch/arm64/boot/dts/rockchip/overlay/
-
-
+		echo "" >"${ODIR}"/armbian-dt-makefile.txt
+		find "${KERNELPATCHDIR}"/overlay -name \*.dtso -printf "%f\n" | while read -r SRC; do
+			BIN=$(echo "${SRC}" | sed 's/\.dtso/.dtbo/')
+			cp "${KERNELPATCHDIR}/overlay/${SRC}" "${ODIR}"/arch/arm64/boot/dts/rockchip/
+			echo "dtb-\$(CONFIG_ARCH_ROCKCHIP) += ${BIN}" >>"${ODIR}"/armbian-dt-makefile.txt
+		done
 	fi
 
 	addPatches "${ODIR}/${SPECFILE}" "${ARMBIAN_PATCHDIR}" "${KERNEL_MAJOR_MINOR}" "${ODIR}"
@@ -347,15 +350,19 @@ if [ ${ARMBIAN} -eq 0 ]; then
 	popd &> /dev/null || exit 1
 
 	if [ -d  ./arch ]; then
-		tar -cf armbian-dtree-files.tar ./arch
+		tar -cf armbian-dt-files.tar ./arch
 		rm -rf ./arch
 
-		SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dtree-files.tar)
+		SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dt-files.tar)
 
 		# Unpack the device tree files after the last patch and add Makefile glue
 		sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a tar xvf %{SOURCE${SPEC_SRCNUMBER}}" "${SPECFILE}"
-		sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a echo \"subdir-y := \$(dts-dirs) overlay\" >> arch/arm64/boot/dts/rockchip/Makefile" "${SPECFILE}"
+		
+		if [ -s armbian-dt-makefile.txt ]; then
+			SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dt-makefile.txt )
+			sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a cat %{SOURCE${SPEC_SRCNUMBER}} >> arch/arm64/boot/dts/rockchip/Makefile" "${SPECFILE}"
 
+		fi
 	fi
 
 	sed -i "s/^.*\(define buildid \).*\$/%\1.armbian/" ${SPECFILE}
