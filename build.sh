@@ -75,22 +75,14 @@ if [ $# -eq 1 ]; then
     [Aa]rm*)
         CONFIG="armbian"
         KERNEL="armbian"
-        PATCH="armbian"
         ;;
     [Cc]ol*)
         CONFIG="collabora"
         KERNEL="collabora"
-        PATCH="collabora"
         ;;
     [Ff]ed*)
         CONFIG="fedora"
         KERNEL="fedora"
-        PATCH="fedora"
-        ;;
-    mix*)
-        CONFIG="fedora"
-        KERNEL="armbian"
-        PATCH="armbian"
         ;;
     *)
         usage 1
@@ -104,7 +96,7 @@ CONFIG=${CONFIG:-armbian}
 KERNEL=${KERNEL:-armbian}
 PATCHVERSION=11
 RPMBUILD_ARGS=${RPMBUILD_ARGS:--bp}
-SPECFILE=SPECS/kernel.${KERNEL}.spec
+SPECFILE="SPECS/kernel.${KERNEL}.spec"
 TARGET=${TARGET:-aarch64-linux-gnu}
 
 ARCH="arm64"
@@ -119,6 +111,10 @@ TARFILE_RELEASE=$(getSpecValue tarfile_release)
 TOPDIR=$(getSpecValue _topdir)
 export ARCH CROSS_COMPILE RPM_PACKAGE_NAME RPM_PACKAGE_VERSION RPM_PACKAGE_RELEASE
 
+OBJCOPY=/usr/bin/aarch64-linux-gnu-objcopy
+READELF=/usr/bin/aarch64-linux-gnu-readelf
+export OBJCOPY READELF
+
 cp SOURCES/* "${TOPDIR}"/SOURCES/
 
 spectool -g -R ${SPECFILE}
@@ -130,7 +126,6 @@ fi
 mkdir out || exit 1
 
 cp "${TOPDIR}"/SOURCES/kernel-aarch64-fedora.${CONFIG}.config ${TOPDIR}/SOURCES/kernel-aarch64-fedora.config
-cp "${TOPDIR}"/SOURCES/patch-6.${PATCHVERSION}-redhat.${PATCH}.patch  "${TOPDIR}"/SOURCES/patch-6.${PATCHVERSION}-redhat.patch
 
 # Use .cache value to increment
 [ -d .cache ] || mkdir .cache
@@ -139,6 +134,7 @@ if [ "${KERNEL}" = "armbian" ]; then
 elif [ "${KERNEL}" = "collabora" ]; then
     sed -i "s/^\(%define buildid \).*$/\1.${BUILDVER}.collabora/" ${SPECFILE}
 fi
+cp ${SPECFILE} "${TOPDIR}"/${SPECFILE}
 
 # Armbian patches fail on GCC14
 #[ "$(gcc -dumpversion)" -ge 14 ] && sed -i 's/^CONFIG_DRM_WERROR=.*$/# CONFIG_DRM_WERROR is not set/' "${TOPDIR}"/SOURCES/kernel-aarch64-fedora.config
@@ -149,7 +145,10 @@ fi
 #    --define="build_ldflags ${BUILD_LDFLAGS}" \
 #    --define="make_opts ${MAKE_OPTS}" \
 #    --without debuginfo \
+#    --define="kcflags -Wno-unused-function -Wno-unused-variable" \
+#    --define="kcflags -Wno-unused" \
 (rpmbuild -v ${RPMBUILD_ARGS} \
+    --noclean \
     --with baseonly \
     --without configchecks \
     --with cross \

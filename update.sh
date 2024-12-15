@@ -249,7 +249,8 @@ BIN=""
 COLLABORA=${COLLABORA:-1}
 COLLABORA_PATCHDIR="${TOPDIR}/patches/collabora"
 COLLABORA_SRCDIR="${TOPDIR}/../collabora/linux"
-FEDORA_SRPM="kernel-6.11.4-300.fc41.src.rpm"
+#FEDORA_SRPM="kernel-6.11.10-300.fc41.src.rpm"
+FEDORA_SRPM="kernel-6.12.0-65.fc42.src.rpm"
 PATCH_BLACKLIST=""
 PATCHES="${TOPDIR}/patches"
 REBASE=${REBASE:-1}
@@ -356,11 +357,11 @@ if [ ${ARMBIAN} -eq 0 ]; then
 		SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dt-files.tar)
 
 		# Unpack the device tree files after the last patch and add Makefile glue
-		sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a tar xvf %{SOURCE${SPEC_SRCNUMBER}}" "${SPECFILE}"
+		sed -i "/^\%{log_msg \"Start of patch applications\"}/i tar xvf \%{SOURCE${SPEC_SRCNUMBER}}" "${SPECFILE}"
 		
 		if [ -s armbian-dt-makefile.txt ]; then
 			SPEC_SRCNUMBER=$(addSource "${SPECFILE}" armbian-dt-makefile.txt )
-			sed -i "/^ApplyOptionalPatch linux-kernel-test.patch/a cat %{SOURCE${SPEC_SRCNUMBER}} >> arch/arm64/boot/dts/rockchip/Makefile" "${SPECFILE}"
+			sed -i "/^\%{log_msg \"Start of patch applications\"}/i cat \%{SOURCE${SPEC_SRCNUMBER}} >> arch/arm64/boot/dts/rockchip/Makefile" "${SPECFILE}"
 
 		fi
 	fi
@@ -373,7 +374,7 @@ fi
 #
 if [ ${COLLABORA} -eq 0 ]; then
 	SPECFILE=kernel.collabora.spec
-	cp kernel.spec ${SPECFILE}
+	[ -f ./kernel.spec ] && cp kernel.spec ${SPECFILE} || exit 1
 
 	KERNEL_MAJOR_MINOR=$(awk '/%define patchversion / { print $3 + 1 }' kernel.spec)
 
@@ -410,12 +411,40 @@ sed -i 's/^\(BuildRequires: openssl-devel openssl-devel-engine\)/%if 0%{fedora} 
 # <
 popd &> /dev/null || exit 1
 
-mv "${ODIR}"/kernel.spec SPECS/
+cp "${ODIR}"/kernel.spec SPECS/kernel.fedora.spec && mv "${ODIR}"/kernel.spec SPECS/
 [ -f "${ODIR}"/kernel.armbian.spec ] && mv "${ODIR}"/kernel.armbian.spec SPECS/
 [ -f "${ODIR}"/kernel.collabora.spec ] && mv "${ODIR}"/kernel.collabora.spec SPECS/
-[ -f "${ODIR}"/kernel.rawhide.spec ] && mv "${ODIR}"/kernel.rawhide.spec SPECS/
+
+cp "${ODIR}"/kernel-aarch64-fedora.config "${ODIR}"/kernel-aarch64-fedora.fedora.config
 mv "${ODIR}"/* SOURCES/
 
 [ $(find "${ODIR}" -mindepth 1 | wc -l) -ne 0 ] && echo 1>&2 "error: unprocessed file from SRPM" && exit 1
+
+exit
+
+# patch-6.11-redhat.patch leaves an unused function in certs/extract_cert.c
+cat << %E%O%T% >> SOURCES/linux-kernel-test.patch
+diff --git a/certs/extract-cert.c b/certs/extract-cert.c
+index 70e9ec89d..3c999341b 100644
+--- a/certs/extract-cert.c
++++ b/certs/extract-cert.c
+@@ -56,16 +56,6 @@ static void display_openssl_errors(int l)
+ 	}
+ }
+ 
+-static void drain_openssl_errors(void)
+-{
+-	const char *file;
+-	int line;
+-
+-	if (ERR_peek_error() == 0)
+-		return;
+-	while (ERR_get_error_line(&file, &line)) {}
+-}
+-
+ #define ERR(cond, fmt, ...)				\
+ 	do {						\
+ 		bool __cond = (cond);			\
+%E%O%T%
 
 # vi: set wrap noexpandtab:

@@ -66,3 +66,7 @@ SRPMS/
 SOURCES/
 SPECS/
 config-*
+combine/
+boot/
+firmware/
+orangepios/

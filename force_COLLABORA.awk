@@ -1,47 +1,21 @@
 BEGIN {
-    # Required for Fedora boot
-    # from Fedora
-    # ZRAM
-    force["CONFIG_ZRAM_DEF_COMP_842"] = "NULL"
-    force["CONFIG_ZRAM_DEF_COMP_LZ4HC"] = "NULL"
-    force["CONFIG_ZRAM_DEF_COMP_LZ4"] = "NULL"
-    force["CONFIG_ZRAM_DEF_COMP_LZO"] = "NULL"
-    force["CONFIG_ZRAM_DEF_COMP_LZORLE"] = "y"
-    force["CONFIG_ZRAM_DEF_COMP_ZSTD"] = "NULL"
-    force["CONFIG_ZRAM"] = "m"
-    force["CONFIG_ZRAM_MEMORY_TRACKING"] = "NULL"
-    force["CONFIG_ZRAM_MULTI_COMP"] = "y"
-    force["CONFIG_ZRAM_TRACK_ENTRY_ACTIME"] = "NULL"
-    force["CONFIG_ZRAM_WRITEBACK"] = "NULL"
-    # XFS
-    force["CONFIG_XFS_DEBUG"] = "NULL"
-    force["CONFIG_XFS_FS"] = "m"
-    force["CONFIG_XFS_ONLINE_REPAIR"] = "NULL"
-    force["CONFIG_XFS_ONLINE_SCRUB_STATS"] = "NULL"
-    force["CONFIG_XFS_ONLINE_SCRUB"] = "y"
-    force["CONFIG_XFS_POSIX_ACL"] = "y"
-    force["CONFIG_XFS_QUOTA"] = "y"
-    force["CONFIG_XFS_RT"] = "y"
-    force["CONFIG_XFS_SUPPORT_ASCII_CI"] = "y"
-    force["CONFIG_XFS_SUPPORT_V4"] = "y"
-    force["CONFIG_XFS_WARN"] = "NULL"
 
     # BPF
     # from Fedora
-    force["CONFIG_BPF"] = "y"
+    force["CONFIG_ARCH_WANT_DEFAULT_BPF_JIT"] = ""
     force["CONFIG_BPF_EVENTS"] = ""
     force["CONFIG_BPFILTER"] = "NULL"
-    force["CONFIG_BPF_JIT_ALWAYS_ON"] = "n"
-    force["CONFIG_BPF_JIT_DEFAULT_ON"] = "n"
+    force["CONFIG_BPF_JIT_ALWAYS_ON"] = "y"
+    force["CONFIG_BPF_JIT_DEFAULT_ON"] = ""
     force["CONFIG_BPF_JIT"] = "y"
-    force["CONFIG_BPF_UNPRIV_DEFAULT_OFF"] = "y"
     force["CONFIG_BPF_KPROBE_OVERRIDE"] = "NULL"
     force["CONFIG_BPF_LIRC_MODE2"] = "y"
     force["CONFIG_BPF_LSM"] = "y"
     force["CONFIG_BPF_PRELOAD_UMD"] = "m"
     force["CONFIG_BPF_PRELOAD"] = "y"
     force["CONFIG_BPF_STREAM_PARSER"] = "y"
-    force["CONFIG_HAVE_EBPF_JIT"] = "y"
+    force["CONFIG_BPF_UNPRIV_DEFAULT_OFF"] = "y"
+    force["CONFIG_HAVE_EBPF_JIT"] = ""
     force["CONFIG_HID_BPF"] = "y"
     force["CONFIG_IPV6_SEG6_BPF"] = ""
     force["CONFIG_LWTUNNEL_BPF"] = "y"
@@ -51,13 +25,6 @@ BEGIN {
     force["CONFIG_NETFILTER_BPF_LINK"] = ""
     force["CONFIG_NETFILTER_XT_MATCH_BPF"] = "m"
     force["CONFIG_TEST_BPF"] = "m"
-
-    #force["CONFIG_BPF_JIT_DEFAULT_ON"] = ""
-    #force["CONFIG_ARCH_WANT_DEFAULT_BPF_JIT"] = ""
-    #force["CONFIG_HAVE_EBPF_JIT"] = ""
-    #force["CONFIG_BPF"] = ""
-    #force["CONFIG_BPF_JIT_ALWAYS_ON"] = "y"
-
 
     # firewalld
     # from Fedora
@@ -180,22 +147,23 @@ BEGIN {
 
     # FTRACE
     # from Fedora
-    force["CONFIG_FTRACE_SORT_STARTUP_TEST"] = "NULL"
-    force["CONFIG_FTRACE_VALIDATE_RCU_IS_WATCHING"] = "NULL"
-    force["CONFIG_FTRACE_MCOUNT_RECORD"] = "y"
-    force["CONFIG_HAVE_DYNAMIC_FTRACE"] = ""
-    force["CONFIG_HAVE_FTRACE_MCOUNT_RECORD"] = ""
-    force["CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS"] = ""
-    force["CONFIG_FTRACE"] = "y"
-    force["CONFIG_FTRACE_STARTUP_TEST"] = "NULL"
-    force["CONFIG_FTRACE_RECORD_RECURSION"] = "NULL"
-    force["CONFIG_FTRACE_SYSCALLS"] = "y"
-    force["CONFIG_HAVE_SAMPLE_FTRACE_DIRECT_MULTI"] = ""
-    force["CONFIG_STM_SOURCE_FTRACE"] = "NULL"
-    force["CONFIG_GCC_SUPPORTS_DYNAMIC_FTRACE_WITH_ARGS"] = ""
-    force["CONFIG_HAVE_SAMPLE_FTRACE_DIRECT"] = ""
-    force["CONFIG_PSTORE_FTRACE"] = "NULL"
     force["CONFIG_DYNAMIC_FTRACE"] = "y"
+    force["CONFIG_FTRACE_MCOUNT_RECORD"] = "y"
+    force["CONFIG_FTRACE_RECORD_RECURSION"] = "NULL"
+    force["CONFIG_FTRACE_SORT_STARTUP_TEST"] = "NULL"
+    force["CONFIG_FTRACE_STARTUP_TEST"] = "NULL"
+    force["CONFIG_FTRACE_SYSCALLS"] = "y"
+    force["CONFIG_FTRACE_VALIDATE_RCU_IS_WATCHING"] = "NULL"
+    force["CONFIG_FTRACE"] = "y"
+    force["CONFIG_FUNCTION_TRACER"] = "y"
+    force["CONFIG_GCC_SUPPORTS_DYNAMIC_FTRACE_WITH_ARGS"] = ""
+    force["CONFIG_HAVE_DYNAMIC_FTRACE"] = ""
+    force["CONFIG_HAVE_DYNAMIC_FTRACE_WITH_ARGS"] = ""
+    force["CONFIG_HAVE_FTRACE_MCOUNT_RECORD"] = ""
+    force["CONFIG_HAVE_SAMPLE_FTRACE_DIRECT"] = ""
+    force["CONFIG_HAVE_SAMPLE_FTRACE_DIRECT_MULTI"] = ""
+    force["CONFIG_PSTORE_FTRACE"] = "NULL"
+    force["CONFIG_STM_SOURCE_FTRACE"] = "NULL"
 
     # LSM
     # from Fedora
@@ -237,6 +205,52 @@ BEGIN {
     force["CONFIG_SECURITY_SELINUX_SIDTAB_HASH_BITS"] = "9"
     force["CONFIG_SECURITY_SELINUX"] = "y"
     force["CONFIG_SECURITY_YAMA"] = "y"
+
+    # SHA1
+    # from Fedora
+    force["CONFIG_CRYPTO_LIB_SHA1"] = ""
+    force["CONFIG_CRYPTO_SHA1_ARM_NEON"] = "y"
+    force["CONFIG_CRYPTO_SHA1_ARM"] = "y"
+    force["CONFIG_IMA_DEFAULT_HASH_SHA1"] = "NULL"
+    force["CONFIG_IMA_DEFAULT_HASH"] = ""sha256""
+    force["CONFIG_MODULE_SIG_SHA1"] = "NULL"
+    force["CONFIG_RPCSEC_GSS_KRB5_ENCTYPES_AES_SHA1"] = "y"
+    force["CONFIG_SCTP_COOKIE_HMAC_SHA1"] = "y"
+    force["CONFIG_SCTP_DEFAULT_COOKIE_HMAC_SHA1"] = "y"
+
+    # from Fedora
+    # ZRAM
+    force["CONFIG_ZRAM_BACKEND_842"] = "NULL"
+    force["CONFIG_ZRAM_BACKEND_DEFLATE"] = "NULL"
+    force["CONFIG_ZRAM_BACKEND_LZ4HC"] = "NULL"
+    force["CONFIG_ZRAM_BACKEND_LZ4"] = "NULL"
+    force["CONFIG_ZRAM_BACKEND_ZSTD"] = "NULL"
+    force["CONFIG_ZRAM_DEF_COMP_842"] = "NULL"
+    force["CONFIG_ZRAM_DEF_COMP_LZ4HC"] = "NULL"
+    force["CONFIG_ZRAM_DEF_COMP_LZ4"] = "NULL"
+    force["CONFIG_ZRAM_DEF_COMP_LZO"] = "NULL"
+    force["CONFIG_ZRAM_DEF_COMP_LZORLE"] = "y"
+    force["CONFIG_ZRAM_DEF_COMP_ZSTD"] = "NULL"
+    force["CONFIG_ZRAM"] = "m"
+    force["CONFIG_ZRAM_MEMORY_TRACKING"] = "NULL"
+    force["CONFIG_ZRAM_MULTI_COMP"] = "y"
+    force["CONFIG_ZRAM_TRACK_ENTRY_ACTIME"] = "NULL"
+    force["CONFIG_ZRAM_WRITEBACK"] = "NULL"
+    force["CONFIG_ZRAM_WRITEBACK"] = "y"
+
+    # from Fedora
+    # XFS
+    force["CONFIG_XFS_DEBUG"] = "NULL"
+    force["CONFIG_XFS_FS"] = "m"
+    force["CONFIG_XFS_ONLINE_REPAIR"] = "NULL"
+    force["CONFIG_XFS_ONLINE_SCRUB_STATS"] = "NULL"
+    force["CONFIG_XFS_ONLINE_SCRUB"] = "y"
+    force["CONFIG_XFS_POSIX_ACL"] = "y"
+    force["CONFIG_XFS_QUOTA"] = "y"
+    force["CONFIG_XFS_RT"] = "y"
+    force["CONFIG_XFS_SUPPORT_ASCII_CI"] = "y"
+    force["CONFIG_XFS_SUPPORT_V4"] = "y"
+    force["CONFIG_XFS_WARN"] = "NULL"
 
     # 
     force["CONFIG_UHID"] = "y"
